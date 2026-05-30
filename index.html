@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Optimiseur de retraits — Retraite Québec</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f7fa; --card: #ffffff; --primary: #1e5f8e; --primary-dark: #14466b;
+    --accent: #2da881; --warn: #d97706; --danger: #b91c1c;
+    --text: #1f2937; --muted: #6b7280; --border: #e5e7eb;
+    --rrsp: #1e5f8e; --tfsa: #2da881; --nonreg: #d97706; --pension: #7c3aed;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+  header { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white; padding: 24px 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+  header p { margin: 4px 0 0; opacity: 0.9; font-size: 14px; }
+  main { display: grid; grid-template-columns: 380px 1fr; gap: 24px; padding: 24px; max-width: 1600px; margin: 0 auto; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 16px; }
+  .card h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--primary); margin: 0 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+  .input-row { display: grid; grid-template-columns: 1fr 110px; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .input-row label { font-size: 13px; color: var(--text); }
+  .input-row .hint { font-size: 11px; color: var(--muted); display: block; }
+  input[type="number"], select { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: inherit; text-align: right; }
+  input[type="number"]:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(30,95,142,0.15); }
+  .check-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 12px; color: var(--muted); }
+  .check-row input { width: auto; }
+  .btn-full { background: var(--primary); color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; margin-left: 4px; }
+  .btn-full:hover { background: var(--primary-dark); }
+  .btn-calc { width: 100%; background: var(--accent); color: white; border: none; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+  .btn-calc:hover { background: #258a68; }
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .summary-tile { background: var(--card); border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .summary-tile .label { font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px; }
+  .summary-tile .value { font-size: 22px; font-weight: 600; margin-top: 4px; color: var(--text); }
+  .summary-tile .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .chart-container { position: relative; height: 320px; margin-bottom: 16px; }
+  .table-wrap { overflow-x: auto; max-height: 500px; overflow-y: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #f9fafb; padding: 8px 6px; text-align: right; font-weight: 600; color: var(--text); border-bottom: 2px solid var(--border); position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: center; }
+  td { padding: 6px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tr:hover td { background: #f9fafb; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; background: var(--border); color: var(--text); }
+  .pill.ferr { background: #fef3c7; color: #92400e; }
+  .display-toggle { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; font-size: 13px; }
+  .display-toggle label { cursor: pointer; }
+  .info-box { background: #eff6ff; border-left: 3px solid var(--primary); padding: 10px 14px; border-radius: 4px; font-size: 12px; color: var(--text); margin-bottom: 12px; }
+  .warn-box { background: #fef3c7; border-left: 3px solid var(--warn); padding: 10px 14px; border-radius: 4px; font-size: 12px; color: #78350f; margin-bottom: 12px; display: none; }
+  .warn-box.show { display: block; }
+  details summary { cursor: pointer; font-size: 13px; color: var(--primary); margin-bottom: 8px; }
+  details[open] summary { margin-bottom: 12px; }
+  .grouped-input { display: flex; gap: 4px; align-items: center; }
+  .grouped-input input { flex: 1; }
+
+  /* ============ RESPONSIVE ============ */
+  /* Tablette (≤1100px déjà couvert en haut, on raffine la grille) */
+  @media (max-width: 1100px) {
+    main { padding: 16px; gap: 16px; }
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  /* Mobile (≤640px) */
+  @media (max-width: 640px) {
+    header { padding: 16px 18px; }
+    header h1 { font-size: 18px; line-height: 1.3; }
+    header p { font-size: 12px; }
+    main { padding: 12px; gap: 12px; }
+    .card { padding: 14px; margin-bottom: 12px; border-radius: 10px; }
+    .card h2 { font-size: 12px; margin-bottom: 12px; }
+    .summary-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+    .summary-tile { padding: 12px; border-radius: 8px; }
+    .summary-tile .label { font-size: 10px; }
+    .summary-tile .value { font-size: 17px; }
+    .summary-tile .sub { font-size: 10px; }
+    .chart-container { height: 260px; margin-bottom: 12px; }
+    .input-row { grid-template-columns: 1fr 130px; gap: 6px; margin-bottom: 8px; }
+    .input-row label { font-size: 12px; }
+    .input-row .hint { font-size: 10px; }
+    input[type="number"], select { padding: 8px 8px; font-size: 14px; min-height: 38px; }
+    .btn-calc { padding: 14px; font-size: 15px; }
+    .btn-full { padding: 8px 10px; font-size: 12px; min-height: 36px; }
+    table { font-size: 11px; }
+    th, td { padding: 5px 6px; }
+    .table-wrap { max-height: 420px; }
+    .info-box, .warn-box { font-size: 11px; padding: 10px 12px; }
+  }
+  /* Très petit mobile (≤380px): label/input empilés */
+  @media (max-width: 380px) {
+    .input-row { grid-template-columns: 1fr; gap: 4px; }
+    .input-row input[type="number"], .input-row select { text-align: left; }
+    .summary-tile .value { font-size: 15px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Optimiseur de retraits — Retraite Québec</h1>
+  <p>Trouve le revenu net après impôt annuel maximal en minimisant l'impôt à vie</p>
+</header>
+
+<main>
+  <div class="inputs-col">
+    <div class="card">
+      <h2>Mes informations</h2>
+      <div class="input-row"><label>Âge actuel</label><input type="number" id="currentAge" value="60" min="40" max="100"></div>
+      <div class="input-row"><label>Espérance de vie</label><input type="number" id="lifeExpectancy" value="92" min="65" max="105"></div>
+    </div>
+    <div class="card">
+      <h2>Hypothèses économiques</h2>
+      <div class="input-row"><label>Taux d'inflation<span class="hint">moy. ~3% sur 100 ans</span></label><input type="number" id="inflation" value="3.0" min="0" max="10" step="0.1"></div>
+      <div class="input-row"><label>Taux de rendement (nominal)<span class="hint">portefeuille équilibré 60/40 ~6–7%</span></label><input type="number" id="returnRate" value="6.5" min="0" max="15" step="0.1"></div>
+    </div>
+    <div class="card">
+      <h2>Mes actifs (en $ d'aujourd'hui)</h2>
+      <div class="input-row"><label>Solde REER</label><input type="number" id="rrspBalance" value="400000" min="0" step="1000"></div>
+      <div class="input-row"><label>Solde CELI</label><input type="number" id="tfsaBalance" value="100000" min="0" step="1000"></div>
+      <div class="input-row"><label>Solde non-enregistré</label><input type="number" id="nonRegBalance" value="150000" min="0" step="1000"></div>
+      <div class="input-row"><label>% du gain en capital non réalisé<span class="hint">portion du solde qui est du gain</span></label><input type="number" id="nonRegGainPct" value="30" min="0" max="100" step="1"></div>
+    </div>
+    <div class="card">
+      <h2>Pension privée</h2>
+      <div class="input-row"><label>Montant annuel ($ d'aujourd'hui)</label><input type="number" id="privPensionAmt" value="0" min="0" step="100"></div>
+      <div class="input-row"><label>Âge de début</label><input type="number" id="privPensionAge" value="65" min="55" max="75"></div>
+      <div class="check-row"><input type="checkbox" id="privPensionIndexed" checked><label for="privPensionIndexed">Indexée à l'inflation</label></div>
+    </div>
+    <div class="card">
+      <h2>Pensions gouvernementales</h2>
+      <div class="input-row"><label>RRQ — montant annuel à 65 ans</label><div class="grouped-input"><input type="number" id="rrqAmt" value="0" min="0" step="100"><button class="btn-full" onclick="setMaxRRQ()">Max</button></div></div>
+      <div class="input-row"><label>RRQ — âge de début (60–72)<span class="hint">−0.6%/mois avant 65, +0.7%/mois après</span></label><input type="number" id="rrqAge" value="65" min="60" max="72"></div>
+      <div class="input-row"><label>PSV — montant annuel à 65 ans</label><div class="grouped-input"><input type="number" id="psvAmt" value="0" min="0" step="100"><button class="btn-full" onclick="setMaxPSV()">Max</button></div></div>
+      <div class="input-row"><label>PSV — âge de début (65–70)<span class="hint">+0.6%/mois après 65</span></label><input type="number" id="psvAge" value="65" min="65" max="70"></div>
+      <button class="btn-full" style="width:100%; margin-top:8px;" onclick="setFullGovPensions()">RRQ pleine + PSV (max)</button>
+    </div>
+    <div class="card">
+      <h2>Stratégie</h2>
+      <div class="input-row"><label>Héritage souhaité ($ réels)<span class="hint">solde total à la fin (avant impôt successoral)</span></label><input type="number" id="inheritanceTarget" value="0" min="0" step="5000"></div>
+      <div class="input-row"><label>Boost en début de retraite (%)<span class="hint">voyages, activités, achats — appliqué aux X premières années</span></label><input type="number" id="boostPct" value="0" min="0" max="100" step="5"></div>
+      <div class="input-row"><label>Durée du boost (années)<span class="hint">typiquement 5–10 ans (60→70)</span></label><input type="number" id="boostYears" value="5" min="0" max="30"></div>
+      <button class="btn-calc" onclick="runOptimization()">Calculer ma stratégie</button>
+    </div>
+    <details class="card">
+      <summary>À propos de l'optimiseur</summary>
+      <p style="font-size:12px; color:var(--muted); margin:0;">
+        L'optimiseur fait une recherche imbriquée: (1) recherche binaire sur le revenu net après impôt annuel maximum, (2) pour chaque candidat, scan 2D sur les cibles de revenu imposable pré-pension et post-pension. La stratégie qui minimise l'impôt total à vie (= maximise l'héritage) est retenue. Les retraits couvrent exactement ton revenu net cible chaque année — revenu constant, aucun réinvestissement. L'optimiseur décide intelligemment de quel compte retirer (REER vs non-enregistré vs CELI) en tenant compte des paliers, de l'âge, des pensions et de la conversion FERR à 71 ans.
+        <br><br>
+        <b>Récupération PSV (OAS clawback)</b> : modélisée. Quand le revenu net (ligne 23400) dépasse le seuil fédéral (93 454 $ en 2025, indexé à l'inflation), 15 % du dépassement est récupéré, jusqu'à concurrence du montant de PSV reçu. Comme on ne modélise pas de déductions, le revenu imposable = le revenu net pour le calcul du clawback. La récupération est affichée comme une réduction de la colonne "Pensions gov." (la PSV reçue nette du clawback), et n'est PAS incluse dans la colonne "Impôt" (qui ne montre que l'impôt sur le revenu fédéral + Qc).
+        <br><br>
+        <b>Train de vie variable (boost)</b> : tu peux choisir un % supplémentaire de revenu net pour les X premières années (voyages, activités, etc.). L'optimiseur en tient compte automatiquement et ajuste les retraits. La valeur affichée dans la tuile "Revenu net" et la colonne du tableau est le montant <em>base</em> (post-boost) ; les années boostées montrent le montant majoré.
+      </p>
+    </details>
+  </div>
+
+  <div class="results-col">
+    <div class="warn-box" id="warnBox"></div>
+    <div class="info-box" id="infoBox" style="display:none;"></div>
+    <div class="summary-grid">
+      <div class="summary-tile"><div class="label">Revenu net après impôt (réel)</div><div class="value" id="sumSpending">—</div><div class="sub" id="sumSpendingSub">par année</div></div>
+      <div class="summary-tile"><div class="label">Impôt total à vie (réel)</div><div class="value" id="sumTax">—</div><div class="sub" id="sumTaxSub">— / année moyenne</div></div>
+      <div class="summary-tile"><div class="label">Taux d'impôt moyen</div><div class="value" id="sumTaxRate">—</div><div class="sub">sur revenu brut</div></div>
+      <div class="summary-tile"><div class="label">Solde final (réel)</div><div class="value" id="sumFinal">—</div><div class="sub" id="sumFinalSub">à l'espérance de vie</div></div>
+    </div>
+    <div class="card"><h2>Évolution des soldes (en $ réels d'aujourd'hui)</h2><div class="chart-container"><canvas id="balanceChart"></canvas></div></div>
+    <div class="card"><h2>Retraits annuels par source (en $ réels)</h2><div class="chart-container"><canvas id="withdrawChart"></canvas></div></div>
+    <div class="card">
+      <h2>Tableau année par année</h2>
+      <div class="display-toggle">
+        <label><input type="radio" name="display" value="nominal" onchange="renderTable()"> Afficher en $ nominaux</label>
+        <label><input type="radio" name="display" value="real" checked onchange="renderTable()"> Afficher en $ réels (d'aujourd'hui)</label>
+      </div>
+      <div class="table-wrap">
+        <table id="resultsTable">
+          <thead><tr>
+            <th>Année</th><th>Âge</th><th>Pensions gov.</th><th>Pension privée</th>
+            <th>Retrait REER/FERR</th><th>Retrait Non-enreg.</th><th>Retrait CELI</th>
+            <th>Revenu imposable</th><th>Impôt</th><th>Revenu net après impôt</th>
+            <th>Solde REER</th><th>Solde CELI</th><th>Solde Non-enreg.</th><th>Total</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const RRQ_MAX_65 = 17196;
+const PSV_MAX_65 = 8732;
+const QC_BRACKETS = [[53255,0.14],[106495,0.19],[129590,0.24],[Infinity,0.2575]];
+const FED_BRACKETS = [[57375,0.15],[114750,0.205],[177882,0.26],[253414,0.29],[Infinity,0.33]];
+const QC_ABATEMENT = 0.165;
+const FED_BPA = 16129, QC_BPA = 18571;
+const FED_AGE_AMT = 9028, FED_AGE_THRESHOLD = 44325;
+const QC_AGE_AMT = 3395, QC_AGE_THRESHOLD = 41260;
+const PENSION_CREDIT_AMT_FED = 2000, PENSION_CREDIT_AMT_QC = 3481;
+const OAS_CLAWBACK_THRESHOLD = 93454;
+const OAS_CLAWBACK_RATE = 0.15;
+
+const FERR_FACTORS = {
+  71: 0.0528, 72: 0.0540, 73: 0.0553, 74: 0.0567, 75: 0.0582,
+  76: 0.0598, 77: 0.0617, 78: 0.0636, 79: 0.0658, 80: 0.0682,
+  81: 0.0708, 82: 0.0738, 83: 0.0771, 84: 0.0808, 85: 0.0851,
+  86: 0.0899, 87: 0.0955, 88: 0.1021, 89: 0.1099, 90: 0.1192,
+  91: 0.1306, 92: 0.1449, 93: 0.1634, 94: 0.1879
+};
+function ferrFactor(age) {
+  if (age < 72) return 0;
+  if (age >= 95) return 0.20;
+  return FERR_FACTORS[age] || 0.20;
+}
+
+function bracketTax(income, brackets) {
+  let tax = 0, prev = 0;
+  for (const [cap, rate] of brackets) {
+    if (income <= cap) { tax += Math.max(0, income - prev) * rate; return tax; }
+    tax += (cap - prev) * rate; prev = cap;
+  }
+  return tax;
+}
+
+// Retourne { incomeTax, clawback } séparément pour permettre l'affichage clair
+function calcTax(taxableIncome, age, hasPensionIncome, year, inflation, psvNominal) {
+  if (taxableIncome <= 0) return { incomeTax: 0, clawback: 0 };
+  const m = Math.pow(1 + inflation, year);
+  const fb = FED_BRACKETS.map(([c,r]) => [c === Infinity ? Infinity : c*m, r]);
+  const qb = QC_BRACKETS.map(([c,r]) => [c === Infinity ? Infinity : c*m, r]);
+
+  let fedTax = bracketTax(taxableIncome, fb);
+  let fc = FED_BPA * m * 0.15;
+  if (age >= 65) {
+    const ageAmt = Math.max(0, FED_AGE_AMT*m - Math.max(0, taxableIncome - FED_AGE_THRESHOLD*m) * 0.15);
+    fc += ageAmt * 0.15;
+  }
+  if (hasPensionIncome) fc += PENSION_CREDIT_AMT_FED * m * 0.15;
+  fedTax = Math.max(0, fedTax - fc) * (1 - QC_ABATEMENT);
+
+  // Récupération PSV (Partie I.2) — basée sur le revenu imposable (= revenu net pour un retraité sans déductions)
+  let clawback = 0;
+  if (psvNominal && psvNominal > 0) {
+    const threshold = OAS_CLAWBACK_THRESHOLD * m;
+    clawback = Math.min(OAS_CLAWBACK_RATE * Math.max(0, taxableIncome - threshold), psvNominal);
+  }
+
+  let qcTax = bracketTax(taxableIncome, qb);
+  let qc = QC_BPA * m * 0.14;
+  if (age >= 65) {
+    const ageAmt = Math.max(0, QC_AGE_AMT*m - Math.max(0, taxableIncome - QC_AGE_THRESHOLD*m) * 0.185);
+    qc += ageAmt * 0.14;
+  }
+  if (hasPensionIncome) qc += PENSION_CREDIT_AMT_QC * m * 0.14;
+  qcTax = Math.max(0, qcTax - qc);
+
+  return { incomeTax: fedTax + qcTax, clawback };
+}
+
+function adjustRRQ(amt, age) {
+  if (age === 65) return amt;
+  if (age < 65) return amt * (1 - 0.006 * (65 - age) * 12);
+  return amt * (1 + 0.007 * (Math.min(72, age) - 65) * 12);
+}
+function adjustPSV(amt, age) {
+  if (age <= 65) return amt;
+  return amt * (1 + 0.006 * (Math.min(70, age) - 65) * 12);
+}
+
+function simulate(params, spendingReal, targetBoostReal, targetPreReal, targetPostReal) {
+  const { currentAge, lifeExpectancy, inflation, ret, rrspBalance, tfsaBalance, nonRegBalance, nonRegGainPct, privPensionAmt, privPensionAge, privPensionIndexed, rrqAmt, rrqAge, psvAmt, psvAge, boostPct, boostYears } = params;
+  const boostFactor = 1 + (boostPct || 0) / 100;
+  const boostDuration = boostYears || 0;
+  const years = lifeExpectancy - currentAge + 1;
+  const transitionAge = Math.min(
+    rrqAmt > 0 ? rrqAge : 999,
+    psvAmt > 0 ? psvAge : 999,
+    privPensionAmt > 0 ? privPensionAge : 999
+  );
+  let rrsp = rrspBalance, tfsa = tfsaBalance, nonReg = nonRegBalance;
+  let nonRegBasis = nonRegBalance * (1 - nonRegGainPct / 100);
+  const rrqAdj = adjustRRQ(rrqAmt, rrqAge);
+  const psvAdj = adjustPSV(psvAmt, psvAge);
+  const rows = [];
+  let totalTaxNominal = 0, totalTaxReal = 0, totalSurplusReal = 0;
+  let shortfallYears = 0, surplusYears = 0;
+
+  for (let i = 0; i < years; i++) {
+    const age = currentAge + i;
+    const inflMult = Math.pow(1 + inflation, i);
+    let privPension = 0;
+    if (age >= privPensionAge) {
+      if (privPensionIndexed) privPension = privPensionAmt * inflMult;
+      else privPension = privPensionAmt * Math.pow(1 + inflation, privPensionAge - currentAge);
+    }
+    const rrq = age >= rrqAge ? rrqAdj * inflMult : 0;
+    const psv = age >= psvAge ? psvAdj * inflMult : 0;
+    const govPension = rrq + psv;
+    const totalPension = privPension + govPension;
+    let ferrMin = (age >= 72 && rrsp > 0) ? rrsp * ferrFactor(age) : 0;
+    // Boost en début de retraite: les X premières années reçoivent (1 + boostPct%) du revenu net cible
+    const yearBoost = (i < boostDuration) ? boostFactor : 1;
+    const spendNominal = spendingReal * yearBoost * inflMult;
+    // 3 cibles : boost > post-pension > pré-pension
+    // Si on est en année boostée, on utilise targetBoost (peu importe l'âge)
+    // Sinon, on utilise targetPre ou targetPost selon l'âge vs début des pensions
+    const isBoostYear = (i < boostDuration);
+    const targetReal = isBoostYear
+      ? targetBoostReal
+      : (age < transitionAge ? targetPreReal : targetPostReal);
+    const targetNominal = targetReal * inflMult;
+    let rrspW = ferrMin, nonRegW = 0, tfsaW = 0;
+
+    function computeNet(rW, nW, tW) {
+      const gainRatio = nonReg > 0 ? Math.max(0, (nonReg - nonRegBasis) / nonReg) : 0;
+      const capGainTaxable = 0.5 * gainRatio * nW;
+      const taxable = totalPension + rW + capGainTaxable;
+      const hasPension = totalPension > 0 || rW > 0;
+      const { incomeTax, clawback } = calcTax(taxable, age, hasPension, i, inflation, psv);
+      const totalTax = incomeTax + clawback;
+      const net = totalPension + rW + nW + tW - totalTax;
+      return { taxable, incomeTax, clawback, totalTax, net };
+    }
+
+    let { net, totalTax, incomeTax, clawback, taxable } = computeNet(rrspW, 0, 0);
+    let shortfall = spendNominal - net;
+
+    // Phase 1: top up REER vers la cible, capé pour net <= spend
+    if (shortfall > 0 && rrsp > rrspW && taxable < targetNominal) {
+      const room = targetNominal - taxable;
+      const avail = rrsp - rrspW;
+      let lo = 0, hi = Math.min(room, avail);
+      for (let it = 0; it < 25; it++) {
+        const mid = (lo + hi) / 2;
+        const { net: nMid } = computeNet(rrspW + mid, 0, 0);
+        if (nMid >= spendNominal) hi = mid; else lo = mid;
+        if (hi - lo < 1) break;
+      }
+      rrspW += hi;
+      ({ net, totalTax, incomeTax, clawback, taxable } = computeNet(rrspW, 0, 0));
+      shortfall = spendNominal - net;
+    }
+
+    // Phase 2: non-enregistré
+    if (shortfall > 0 && nonReg > 0) {
+      let lo = 0, hi = nonReg;
+      for (let it = 0; it < 25; it++) {
+        const mid = (lo + hi) / 2;
+        const { net: nMid } = computeNet(rrspW, mid, 0);
+        if (nMid >= spendNominal) hi = mid; else lo = mid;
+        if (hi - lo < 1) break;
+      }
+      nonRegW = hi;
+      ({ net, totalTax, incomeTax, clawback, taxable } = computeNet(rrspW, nonRegW, 0));
+      shortfall = spendNominal - net;
+    }
+
+    // Phase 3: REER au-delà de la cible
+    if (shortfall > 0 && rrsp - rrspW > 0) {
+      let lo = 0, hi = rrsp - rrspW;
+      for (let it = 0; it < 25; it++) {
+        const mid = (lo + hi) / 2;
+        const { net: nMid } = computeNet(rrspW + mid, nonRegW, 0);
+        if (nMid >= spendNominal) hi = mid; else lo = mid;
+        if (hi - lo < 1) break;
+      }
+      rrspW += hi;
+      ({ net, totalTax, incomeTax, clawback, taxable } = computeNet(rrspW, nonRegW, 0));
+      shortfall = spendNominal - net;
+    }
+
+    // Phase 4: CELI
+    if (shortfall > 0 && tfsa > 0) {
+      tfsaW = Math.min(tfsa, shortfall);
+      ({ net, totalTax, incomeTax, clawback, taxable } = computeNet(rrspW, nonRegW, tfsaW));
+      shortfall = spendNominal - net;
+    }
+
+    if (shortfall > 1) shortfallYears++;
+    const surplus = Math.max(0, net - spendNominal);
+    if (surplus > 1) { surplusYears++; totalSurplusReal += surplus / inflMult; }
+
+    const gainRatio = nonReg > 0 ? Math.max(0, (nonReg - nonRegBasis) / nonReg) : 0;
+    const basisRemoved = nonRegW * (1 - gainRatio);
+    rrsp -= rrspW; tfsa -= tfsaW; nonReg -= nonRegW; nonRegBasis -= basisRemoved;
+    rrsp *= (1 + ret); tfsa *= (1 + ret); nonReg *= (1 + ret);
+    rrsp = Math.max(0, rrsp); tfsa = Math.max(0, tfsa); nonReg = Math.max(0, nonReg);
+    nonRegBasis = Math.min(nonRegBasis, nonReg);
+    totalTaxNominal += totalTax;
+    totalTaxReal += totalTax / inflMult;
+
+    rows.push({
+      year: i + 1, age, inflMult,
+      privPension, rrq, psv, govPension, ferrMin,
+      rrspW, nonRegW, tfsaW,
+      taxable,
+      incomeTax,   // impôt fédéral + Qc seulement (sans clawback)
+      clawback,    // récupération PSV
+      totalTax,    // total = incomeTax + clawback
+      spendNominal, netCash: spendNominal, surplus,
+      rrspEnd: rrsp, tfsaEnd: tfsa, nonRegEnd: nonReg,
+      total: rrsp + tfsa + nonReg,
+      isFERR: age >= 72
+    });
+  }
+
+  const finalNominal = rrsp + tfsa + nonReg;
+  const finalReal = finalNominal / Math.pow(1 + inflation, years - 1);
+  return { rows, finalNominal, finalReal, totalTaxNominal, totalTaxReal, totalSurplusReal, surplusYears, shortfallYears, years, transitionAge };
+}
+
+function isBetter(a, b) {
+  if (a.shortfallYears !== b.shortfallYears) return a.shortfallYears < b.shortfallYears;
+  if (a.surplusYears !== b.surplusYears) return a.surplusYears < b.surplusYears;
+  return a.totalTaxReal < b.totalTaxReal;
+}
+
+function optimize(params, spendingReal, refine) {
+  const hasBoost = (params.boostPct > 0 && params.boostYears > 0);
+  let best = null, bestBoost = 0, bestPre = 0, bestPost = 0;
+
+  if (hasBoost) {
+    // Scan 3D coarse : 8 valeurs × 8 × 8 = 512 essais (pas de 25k$)
+    for (let tBoost = 15000; tBoost <= 190000; tBoost += 25000) {
+      for (let tPre = 15000; tPre <= 190000; tPre += 25000) {
+        for (let tPost = 15000; tPost <= 190000; tPost += 25000) {
+          const s = simulate(params, spendingReal, tBoost, tPre, tPost);
+          if (!best || isBetter(s, best)) { best = s; bestBoost = tBoost; bestPre = tPre; bestPost = tPost; }
+        }
+      }
+    }
+    if (refine) {
+      // Refinement 3D : 9 × 9 × 9 = 729 (pas de 3k$)
+      for (let tBoost = Math.max(12000, bestBoost - 12000); tBoost <= bestBoost + 12000; tBoost += 3000) {
+        for (let tPre = Math.max(12000, bestPre - 12000); tPre <= bestPre + 12000; tPre += 3000) {
+          for (let tPost = Math.max(12000, bestPost - 12000); tPost <= bestPost + 12000; tPost += 3000) {
+            const s = simulate(params, spendingReal, tBoost, tPre, tPost);
+            if (isBetter(s, best)) { best = s; bestBoost = tBoost; bestPre = tPre; bestPost = tPost; }
+          }
+        }
+      }
+    }
+  } else {
+    // Scan 2D classique (pas de boost) : targetBoost ignoré, on passe une valeur fictive
+    for (let tPre = 15000; tPre <= 180000; tPre += 20000) {
+      for (let tPost = 15000; tPost <= 180000; tPost += 20000) {
+        const s = simulate(params, spendingReal, tPre, tPre, tPost);
+        if (!best || isBetter(s, best)) { best = s; bestBoost = tPre; bestPre = tPre; bestPost = tPost; }
+      }
+    }
+    if (refine) {
+      for (let tPre = Math.max(12000, bestPre - 20000); tPre <= bestPre + 20000; tPre += 2000) {
+        for (let tPost = Math.max(12000, bestPost - 20000); tPost <= bestPost + 20000; tPost += 2000) {
+          const s = simulate(params, spendingReal, tPre, tPre, tPost);
+          if (isBetter(s, best)) { best = s; bestBoost = tPre; bestPre = tPre; bestPost = tPost; }
+        }
+      }
+    }
+  }
+
+  best.targetBoostUsed = bestBoost;
+  best.targetPreUsed = bestPre;
+  best.targetPostUsed = bestPost;
+  return best;
+}
+
+function findMaxSpending(params, inheritanceTargetReal) {
+  let lo = 0;
+  let hi = (params.rrspBalance + params.tfsaBalance + params.nonRegBalance) / 2 + params.rrqAmt + params.psvAmt + params.privPensionAmt + 50000;
+  let best = lo;
+  for (let it = 0; it < 18; it++) {
+    const mid = (lo + hi) / 2;
+    const sim = optimize(params, mid, false);
+    if (sim.shortfallYears === 0 && sim.finalReal >= inheritanceTargetReal) { best = mid; lo = mid; }
+    else { hi = mid; }
+    if (hi - lo < 200) break;
+  }
+  const result = optimize(params, best, true);
+  result.baseSpendingReal = best;  // la VRAIE base (avant boost) en $ réels
+  return result;
+}
+
+let lastResult = null, balanceChart = null, withdrawChart = null;
+function setMaxRRQ() { document.getElementById('rrqAmt').value = RRQ_MAX_65; }
+function setMaxPSV() { document.getElementById('psvAmt').value = PSV_MAX_65; }
+function setFullGovPensions() { setMaxRRQ(); setMaxPSV(); }
+
+function getParams() {
+  return {
+    currentAge: +document.getElementById('currentAge').value,
+    lifeExpectancy: +document.getElementById('lifeExpectancy').value,
+    inflation: +document.getElementById('inflation').value / 100,
+    ret: +document.getElementById('returnRate').value / 100,
+    rrspBalance: +document.getElementById('rrspBalance').value,
+    tfsaBalance: +document.getElementById('tfsaBalance').value,
+    nonRegBalance: +document.getElementById('nonRegBalance').value,
+    nonRegGainPct: +document.getElementById('nonRegGainPct').value,
+    privPensionAmt: +document.getElementById('privPensionAmt').value,
+    privPensionAge: +document.getElementById('privPensionAge').value,
+    privPensionIndexed: document.getElementById('privPensionIndexed').checked,
+    rrqAmt: +document.getElementById('rrqAmt').value,
+    rrqAge: +document.getElementById('rrqAge').value,
+    psvAmt: +document.getElementById('psvAmt').value,
+    psvAge: +document.getElementById('psvAge').value,
+    boostPct: +document.getElementById('boostPct').value,
+    boostYears: +document.getElementById('boostYears').value
+  };
+}
+
+function fmt(n) {
+  if (!isFinite(n)) return '—';
+  return Math.round(n).toLocaleString('fr-CA', { style: 'currency', currency: 'CAD', maximumFractionDigits: 0 });
+}
+function fmtPct(n) { return (n * 100).toFixed(1) + '%'; }
+
+function runOptimization() {
+  const params = getParams();
+  if (params.lifeExpectancy <= params.currentAge) {
+    alert("L'espérance de vie doit être supérieure à l'âge actuel.");
+    return;
+  }
+  const inheritanceTarget = +document.getElementById('inheritanceTarget').value;
+  const result = findMaxSpending(params, inheritanceTarget);
+  // baseSpendingReal = la base (avant boost). row[0].spendNominal serait boosté si row[0] est dans la période de boost.
+  const appliedSpending = result.baseSpendingReal;
+  lastResult = result;
+
+  const warnBox = document.getElementById('warnBox');
+  const messages = [];
+  if (result.shortfallYears > 0) {
+    messages.push(`⚠️ Avec cet héritage cible, les comptes s'épuisent (${result.shortfallYears} année(s) sans pouvoir atteindre les dépenses). Réduis ton héritage souhaité.`);
+  }
+  if (result.surplusYears > 0) {
+    messages.push(`⚠️ Le retrait FERR forcerait un excédent total de <b>${fmt(result.totalSurplusReal)}</b> ($ réels) sur ${result.surplusYears} année(s) — l'optimiseur n'a pas pu vider le REER assez tôt.`);
+  }
+  if (messages.length) { warnBox.classList.add('show'); warnBox.innerHTML = messages.join('<br>'); }
+  else { warnBox.classList.remove('show'); }
+
+  const infoBox = document.getElementById('infoBox');
+  infoBox.style.display = 'block';
+  let infoMsg = `🎯 <b>Stratégie optimale :</b> revenu net après impôt = <b>${fmt(appliedSpending)}/an</b> en $ d'aujourd'hui (base), avec un héritage final de <b>${fmt(inheritanceTarget)}</b> ($ réels).`;
+  if (params.boostPct > 0 && params.boostYears > 0) {
+    const boostedAmt = appliedSpending * (1 + params.boostPct / 100);
+    infoMsg += `<br>🚀 <b>Boost actif :</b> les ${params.boostYears} premières années (âge ${params.currentAge}–${params.currentAge + params.boostYears - 1}), tu reçois <b>${fmt(boostedAmt)}/an</b> (+${params.boostPct}%), puis ${fmt(appliedSpending)}/an par la suite.`;
+  }
+  infoBox.innerHTML = infoMsg;
+
+  document.getElementById('sumSpending').textContent = fmt(appliedSpending);
+  const boostActive = (params.boostPct > 0 && params.boostYears > 0);
+  document.getElementById('sumSpendingSub').textContent = boostActive
+    ? `base (${result.years - params.boostYears} ans après le boost)`
+    : `${result.years} années`;
+  document.getElementById('sumTax').textContent = fmt(result.totalTaxReal);
+  document.getElementById('sumTaxSub').textContent = fmt(result.totalTaxReal / result.years) + ' / an en moy.';
+  const totalGrossReal = result.rows.reduce((s, r) => s + (r.govPension + r.privPension + r.rrspW + r.nonRegW) / r.inflMult, 0);
+  const avgTaxRate = totalGrossReal > 0 ? result.totalTaxReal / totalGrossReal : 0;
+  document.getElementById('sumTaxRate').textContent = fmtPct(avgTaxRate);
+  document.getElementById('sumFinal').textContent = fmt(result.finalReal);
+  document.getElementById('sumFinalSub').textContent = `(${fmt(result.finalNominal)} nominal)`;
+
+  renderCharts();
+  renderTable();
+}
+
+function renderCharts() {
+  if (!lastResult) return;
+  const ages = lastResult.rows.map(r => r.age);
+  const rrspReal = lastResult.rows.map(r => r.rrspEnd / r.inflMult);
+  const tfsaReal = lastResult.rows.map(r => r.tfsaEnd / r.inflMult);
+  const nonRegReal = lastResult.rows.map(r => r.nonRegEnd / r.inflMult);
+  if (balanceChart) balanceChart.destroy();
+  balanceChart = new Chart(document.getElementById('balanceChart'), {
+    type: 'line',
+    data: {
+      labels: ages,
+      datasets: [
+        { label: 'REER / FERR', data: rrspReal, borderColor: '#1e5f8e', backgroundColor: 'rgba(30,95,142,0.15)', fill: true, tension: 0.2 },
+        { label: 'CELI', data: tfsaReal, borderColor: '#2da881', backgroundColor: 'rgba(45,168,129,0.15)', fill: true, tension: 0.2 },
+        { label: 'Non-enregistré', data: nonRegReal, borderColor: '#d97706', backgroundColor: 'rgba(217,119,6,0.15)', fill: true, tension: 0.2 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      scales: { x: { title: { display: true, text: 'Âge' } }, y: { title: { display: true, text: '$ réels (aujourd\'hui)' }, ticks: { callback: v => '$' + Math.round(v/1000) + 'k' } } },
+      plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + fmt(c.parsed.y) } } }
+    }
+  });
+  const rrspWReal = lastResult.rows.map(r => r.rrspW / r.inflMult);
+  const nonRegWReal = lastResult.rows.map(r => r.nonRegW / r.inflMult);
+  const tfsaWReal = lastResult.rows.map(r => r.tfsaW / r.inflMult);
+  // Pensions affichées NETTES du clawback (cohérent avec le tableau)
+  const pensionReal = lastResult.rows.map(r => (r.govPension - r.clawback + r.privPension) / r.inflMult);
+  if (withdrawChart) withdrawChart.destroy();
+  withdrawChart = new Chart(document.getElementById('withdrawChart'), {
+    type: 'bar',
+    data: {
+      labels: ages,
+      datasets: [
+        { label: 'Pensions nettes (gov + privée − clawback PSV)', data: pensionReal, backgroundColor: '#7c3aed' },
+        { label: 'Retrait REER/FERR', data: rrspWReal, backgroundColor: '#1e5f8e' },
+        { label: 'Retrait Non-enregistré', data: nonRegWReal, backgroundColor: '#d97706' },
+        { label: 'Retrait CELI', data: tfsaWReal, backgroundColor: '#2da881' }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      scales: { x: { stacked: true, title: { display: true, text: 'Âge' } }, y: { stacked: true, title: { display: true, text: '$ réels (aujourd\'hui)' }, ticks: { callback: v => '$' + Math.round(v/1000) + 'k' } } },
+      plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + fmt(c.parsed.y) } } }
+    }
+  });
+}
+
+function renderTable() {
+  if (!lastResult) return;
+  const isReal = document.querySelector('input[name="display"]:checked').value === 'real';
+  const tbody = document.querySelector('#resultsTable tbody');
+  tbody.innerHTML = '';
+  for (const r of lastResult.rows) {
+    const m = isReal ? 1 / r.inflMult : 1;
+    const tr = document.createElement('tr');
+    // Pension gov NETTE du clawback PSV
+    const govNet = r.govPension - r.clawback;
+    const govLabel = govNet > 0
+      ? (r.clawback > 1
+          ? `${fmt(govNet * m)} <span class="pill" style="background:#fee2e2;color:#991b1b" title="PSV récupérée: ${fmt(r.clawback * m)}">−PSV</span>`
+          : fmt(govNet * m))
+      : '—';
+    const privLabel = r.privPension > 0 ? fmt(r.privPension * m) : '—';
+    const ferrPill = r.isFERR && r.ferrMin > 0 ? ` <span class="pill ferr">FERR</span>` : '';
+    tr.innerHTML = `
+      <td>${r.year}</td><td>${r.age}</td>
+      <td>${govLabel}</td><td>${privLabel}</td>
+      <td>${r.rrspW > 0 ? fmt(r.rrspW * m) : '—'}${ferrPill}</td>
+      <td>${r.nonRegW > 0 ? fmt(r.nonRegW * m) : '—'}</td>
+      <td>${r.tfsaW > 0 ? fmt(r.tfsaW * m) : '—'}</td>
+      <td>${fmt(r.taxable * m)}</td>
+      <td>${fmt(r.incomeTax * m)}</td>
+      <td>${fmt(r.netCash * m)}</td>
+      <td>${fmt(r.rrspEnd * m)}</td><td>${fmt(r.tfsaEnd * m)}</td>
+      <td>${fmt(r.nonRegEnd * m)}</td><td><b>${fmt(r.total * m)}</b></td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  setMaxRRQ();
+  setMaxPSV();
+  runOptimization();
+});
+</script>
+
+</body>
+</html>
